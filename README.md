@@ -18,10 +18,11 @@ An **Arduino-powered remote-controlled tank**, modeled after the Soviet **KV-1 h
 | HC-05 Bluetooth Module        | 1        | Wireless control                |
 | L298N Motor Driver           | 1        | Controls dual motors            |
 | DC Motors                     | 2        | Track movement                  |
-| MG90D Servos (Turret Control) | 2        | One for rotation, one for elevation |
+| MG90D Servos | 2        | Turret control |
 | 9.6V 2000mAh Battery Pack    | 1        | Power supply                    |
 | Jumper Wires                 | -        | Various connections             |
 | Custom Tank Chassis          | 1        | 3D printed or custom-built      |
+| Custom Firing Mechanism (Optional) | 1        | Mechanical |
 
 ## Wiring Diagram
 ![Wiring Diagram](Drawing.png)
