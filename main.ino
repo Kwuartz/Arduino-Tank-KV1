@@ -17,9 +17,16 @@ const int firingServoPin = 3;
 Servo rotationServo;
 Servo firingServo;
 
+// Delay between main loop iterations (ms)
+const int loopDelay = 10;
+
 // Turret Rotation
-const int rotationStep = 10;
+const int rotationStep = 4;
+const float smoothingRate = 0.5;
 int turretRotation = 90;
+int targetRotation = 90;
+
+// Motor Threshold
 int minimumThreshold = 32;
 
 void setup() {
@@ -39,22 +46,27 @@ void setup() {
 void loop() {
   if (Serial.available()) {
     String bluetoothInput = Serial.readStringUntil('\n');
+    Serial.println(bluetoothInput);
 
     // CSV format
     int comma1 = bluetoothInput.indexOf(',');
     int comma2 = bluetoothInput.indexOf(',', comma1 + 1);
-    int comma3 = bluetoothInput.indexOf(',', comma2 + 1);
-    int comma4 = bluetoothInput.indexOf(',', comma3 + 1);
 
+    // Less commas to reduce bytes
     float distance = bluetoothInput.substring(0, comma1).toFloat();
     float angle = bluetoothInput.substring(comma1 + 1, comma2).toFloat();
-    int turretLeft = bluetoothInput.substring(comma2 + 1, comma3).toInt();
-    int turretRight = bluetoothInput.substring(comma3 + 1, comma4).toInt();
-    int fire = bluetoothInput.substring(comma4 + 1).toInt();
+    int turretLeft = bluetoothInput.substring(comma2 + 1, comma2 + 2).toInt();
+    int turretRight = bluetoothInput.substring(comma2 + 2, comma2 + 3).toInt();
+    int fire = bluetoothInput.substring(comma2 + 3).toInt();
+    Serial.println(angle);
+    Serial.println(turretLeft);
+    Serial.println(turretRight);
+    Serial.println(turretRotation);
+    Serial.println(targetRotation);
     
     // Speed calculation
-    int speed = distance * 255;
-    float ratio = cos(angle * 3.14 / 180);
+    int speed = distance * -255;
+    float ratio = abs(cos(angle * 3.14 / 180));
 
     int leftSpeed, rightSpeed;
 
@@ -64,6 +76,11 @@ void loop() {
     } else {
       rightSpeed = speed;
       leftSpeed = speed * ratio;
+    }
+
+    if (angle > 90 and angle < 270) {
+      leftSpeed *= -1;
+      rightSpeed *= -1; 
     }
  
     if (leftSpeed < minimumThreshold and leftSpeed > -minimumThreshold) {
@@ -77,22 +94,23 @@ void loop() {
     setMotorSpeed(leftSpeed, rightSpeed);
 
     if (turretLeft == 1) {
-      Serial.println(turretRotation);
-      turretRotation += rotationStep;
+      targetRotation += rotationStep;
     }
 
     if (turretRight == 1) {
-      Serial.println(turretRotation);
-      turretRotation -= rotationStep;
+      targetRotation -= rotationStep;
     }
 
-    turretRotation = constrain(turretRotation, 0, 180);
-    rotationServo.write(turretRotation);
+    targetRotation = constrain(targetRotation, 0, 180);
 
     if (fire == 1) {
       activateFiringServo();
     }
   }
+
+  turretRotation += round((targetRotation - turretRotation) * smoothingRate);
+  rotationServo.write(turretRotation);
+  delay(loopDelay);
 }
 
 void setMotorSpeed(int leftSpeed, int rightSpeed) {
