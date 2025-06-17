@@ -1,7 +1,6 @@
 #include <BluetoothSerial.h>
 #include <ESP32Servo.h>
-#include <IRremoteESP8266.h>
-#include <IRsend.h>
+#include <IRremote.h>
 
 // Bluetooth
 BluetoothSerial SerialBT;
@@ -18,14 +17,19 @@ const int IN3 = 17;
 const int IN4 = 16;
 
 // Turret Servo
+Servo TurretServo;
 const int turretServoPin = 32;
 const int defaultTurretAngle = 90;
+const int traverseStep = 10;
 int turretAngle = defaultTurretAngle;
-Servo TurretServo;
+int targetTurretAngle = turretAngle;
 
 // IR Transmitter
 const int transmitterPin = 25;
-IRsend Transmitter(transmitterPin);
+
+// Firing
+const unsigned long firingCooldown = 500; 
+unsigned long lastFired = 0;
 
 // PWM
 const int freq = 1000;
@@ -40,24 +44,34 @@ void setup() {
   pinMode(IN3, OUTPUT);
   pinMode(IN4, OUTPUT);
 
-  TurretServo.attach(turretServoPin);
-  TurretServo.write(defaultTurretAngle);
-
   ledcAttach(ENA, freq, resolution);
   ledcAttach(ENB, freq, resolution);
-  
-  Transmitter.begin();
+
+  ESP32PWM::allocateTimer(3);
+  TurretServo.attach(turretServoPin);
+
+  IrSender.begin(transmitterPin);
 
   Serial.begin(115200);
   SerialBT.begin(bluetoothName);
 
-  Serial.println("Bluetooth Ready");
+  TurretServo.write(0);
+  delay(1000);
+  TurretServo.write(180);
+  delay(1000);
+  TurretServo.write(defaultTurretAngle);
 }
 
 void loop() {
+  if (turretAngle != targetTurretAngle) {
+    if (turretAngle < targetTurretAngle) turretAngle++;
+    else if (turretAngle > targetTurretAngle) turretAngle--;
+
+    TurretServo.write(turretAngle);
+  }
+
   if (SerialBT.available()) {
     String input = SerialBT.readStringUntil('\n');
-    Serial.println("Received: " + input);
 
     int comma1 = input.indexOf(',');
     int comma2 = input.indexOf(',', comma1 + 1);
@@ -68,44 +82,46 @@ void loop() {
     int turretRight = input.substring(comma2 + 2, comma2 + 3).toInt();
     int fire = input.substring(comma2 + 3).toInt();
 
-    int speed = distance * -255;
-    float ratio = abs(cos(angle * 3.14 / 180));
+    if (distance != 0) {
+      int speed = distance * -255;
+      float ratio = abs(cos(angle * 3.14 / 180));
 
-    int leftSpeed, rightSpeed;
+      int leftSpeed, rightSpeed;
 
-    if (angle > 0 && angle < 180) {
-      leftSpeed = speed;
-      rightSpeed = speed * ratio;
-    } else {
-      rightSpeed = speed;
-      leftSpeed = speed * ratio;
+      if (angle > 0 && angle < 180) {
+        leftSpeed = speed;
+        rightSpeed = speed * ratio;
+      } else {
+        rightSpeed = speed;
+        leftSpeed = speed * ratio;
+      }
+
+      if (angle > 90 && angle < 270) {
+        leftSpeed *= -1;
+        rightSpeed *= -1; 
+      }
+
+      if (abs(leftSpeed) < minimumThreshold) leftSpeed = 0;
+      if (abs(rightSpeed) < minimumThreshold) rightSpeed = 0;
+
+      setMotorSpeed(leftSpeed, rightSpeed);
     }
-
-    if (angle > 90 && angle < 270) {
-      leftSpeed *= -1;
-      rightSpeed *= -1; 
-    }
-
-    if (abs(leftSpeed) < minimumThreshold) leftSpeed = 0;
-    if (abs(rightSpeed) < minimumThreshold) rightSpeed = 0;
-
-    setMotorSpeed(leftSpeed, rightSpeed);
 
     if (turretLeft == 1 || turretRight == 1) {
       if (turretLeft == 1) {
-        turretAngle -= 1;
+        targetTurretAngle += traverseStep;
       }
 
       if (turretRight == 1) {
-        turretAngle += 1;
+        targetTurretAngle -= traverseStep;
       }
 
-      turretAngle = constrain(turretAngle, 0, 180)
-      TurretServo.write(turretAngle);
+      targetTurretAngle = constrain(targetTurretAngle, 0, 180);
     }
 
-    if (fire == 1) {
-      Transmitter.sendNEC(0xF, 32);
+    if (fire == 1 && (millis() - lastFired) >= firingCooldown) {
+      IrSender.sendNEC(0xF, 32);
+      lastFired = millis();
     }
   }
 }
