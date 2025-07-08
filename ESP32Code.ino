@@ -1,6 +1,6 @@
 #include <BluetoothSerial.h>
 #include <ESP32Servo.h>
-#include <IRremote.h>
+#include <IRremote.hpp>
 
 // Bluetooth
 BluetoothSerial SerialBT;
@@ -27,11 +27,38 @@ int targetTurretAngle = turretAngle;
 // IR Transmitter
 const int transmitterPin = 25;
 
+// IR Receivers
+const int frontReceiverPin = 33;
+const int topReceiverPin = 26;
+const int backReceiverPin = 27;
+
+IRrecv frontReceiver(frontReceiverPin);
+IRrecv topReceiver(topReceiverPin);
+IRrecv backReceiver(backReceiverPin);
+
+decode_results results;
+
 // Firing
 const unsigned long firingCooldown = 500; 
 unsigned long lastFired = 0;
 
+const uint8_t team = 1;
+const uint8_t damage = 1;
+const uint32_t firingData = ((uint32_t)team << 8) | damage;
+
+// Hits
+const unsigned long hitCooldown = 100;
+unsigned long lastHit = 0;
+
+int health = 3;
+
+const int frontDamage = 1;
+const int topDamage = 2;
+const int backDamage = 3;
+
 // PWM
+const int ENA_CHANNEL = 0;
+const int ENB_CHANNEL = 1;
 const int freq = 1000;
 const int resolution = 8;
 
@@ -44,13 +71,19 @@ void setup() {
   pinMode(IN3, OUTPUT);
   pinMode(IN4, OUTPUT);
 
-  ledcAttach(ENA, freq, resolution);
-  ledcAttach(ENB, freq, resolution);
+  ledcSetup(ENA_CHANNEL, freq, resolution);
+  ledcSetup(ENB_CHANNEL, freq, resolution);
+  ledcAttachPin(ENA, ENA_CHANNEL);
+  ledcAttachPin(ENB, ENB_CHANNEL);
 
   ESP32PWM::allocateTimer(3);
   TurretServo.attach(turretServoPin);
 
   IrSender.begin(transmitterPin);
+
+  frontReceiver.begin();
+  topReceiver.begin();
+  backReceiver.begin();
 
   Serial.begin(115200);
   SerialBT.begin(bluetoothName);
@@ -70,7 +103,46 @@ void loop() {
     TurretServo.write(turretAngle);
   }
 
-  if (SerialBT.available()) {
+  if (frontReceiver.decode(&results)) {
+    uint32_t data = results.value;
+    uint8_t receivedTeam = (data >> 8) & 0xFF;
+
+    if ((millis() - lastHit) >= hitCooldown && recievedTeam != team) {
+      uint8_t damage = data & 0xFF;
+      health -= damage * frontDamage;
+      lastHit = millis();
+    }
+
+    frontReceiver.resume();
+  }
+
+  if (topReceiver.decode(&results)) {
+    uint32_t data = results.value;
+    uint8_t recievedTeam = (data >> 8) & 0xFF;
+    
+    if ((millis() - lastHit) >= hitCooldown && recievedTeam != team) {
+      uint8_t damage = data & 0xFF;
+      health -= damage * topDamage;
+      lastHit = millis();
+    }
+
+    topReceiver.resume();
+  }
+
+  if (backReceiver.decode(&results)) {
+    uint32_t data = results.value;
+    uint8_t recievedTeam = (data >> 8) & 0xFF;
+    
+    if ((millis() - lastHit) >= hitCooldown && recievedTeam != team) {
+      uint8_t damage = data & 0xFF;
+      health -= damage * backDamage;
+      lastHit = millis();
+    }
+
+    backReceiver.resume();
+  }
+
+  if (SerialBT.available() && health > 0) {
     String input = SerialBT.readStringUntil('\n');
 
     int comma1 = input.indexOf(',');
@@ -82,29 +154,31 @@ void loop() {
     int turretRight = input.substring(comma2 + 2, comma2 + 3).toInt();
     int fire = input.substring(comma2 + 3).toInt();
 
-    if (distance != 0) {
-      int speed = distance * -255;
-      float ratio = abs(cos(angle * 3.14 / 180));
+    int speed = distance * -255;
+    float ratio = abs(cos(angle * 3.14 / 180));
 
-      int leftSpeed, rightSpeed;
+    int leftSpeed, rightSpeed;
 
-      if (angle > 0 && angle < 180) {
-        leftSpeed = speed;
-        rightSpeed = speed * ratio;
-      } else {
-        rightSpeed = speed;
-        leftSpeed = speed * ratio;
-      }
+    if (angle > 0 && angle < 180) {
+      leftSpeed = speed;
+      rightSpeed = speed * ratio;
+    } else {
+      rightSpeed = speed;
+      leftSpeed = speed * ratio;
+    }
 
-      if (angle > 90 && angle < 270) {
-        leftSpeed *= -1;
-        rightSpeed *= -1; 
-      }
+    if (angle > 90 && angle < 270) {
+      leftSpeed *= -1;
+      rightSpeed *= -1; 
+    }
 
-      if (abs(leftSpeed) < minimumThreshold) leftSpeed = 0;
-      if (abs(rightSpeed) < minimumThreshold) rightSpeed = 0;
+    if (abs(leftSpeed) < minimumThreshold) leftSpeed = 0;
+    if (abs(rightSpeed) < minimumThreshold) rightSpeed = 0;
 
-      setMotorSpeed(leftSpeed, rightSpeed);
+    setMotorSpeed(leftSpeed, rightSpeed);
+
+    if (turretLeft == 1 && turretRight == 1) {
+      health = 0;
     }
 
     if (turretLeft == 1 || turretRight == 1) {
@@ -120,9 +194,10 @@ void loop() {
     }
 
     if (fire == 1 && (millis() - lastFired) >= firingCooldown) {
-      IrSender.sendNEC(0xF, 32);
+      IrSender.sendNEC(firingData, 32);
       lastFired = millis();
     }
+  } else {
   }
 }
 
@@ -130,28 +205,28 @@ void setMotorSpeed(int leftSpeed, int rightSpeed) {
   if (rightSpeed > 0) {
     digitalWrite(IN1, HIGH);
     digitalWrite(IN2, LOW);
-    ledcWrite(ENA, rightSpeed);
+    ledcWrite(ENA_CHANNEL, rightSpeed);
   } else if (rightSpeed < 0) {
     digitalWrite(IN1, LOW);
     digitalWrite(IN2, HIGH);
-    ledcWrite(ENA, -rightSpeed);
+    ledcWrite(ENA_CHANNEL, -rightSpeed);
   } else {
     digitalWrite(IN1, LOW);
     digitalWrite(IN2, LOW);
-    ledcWrite(ENA, 0);
+    ledcWrite(ENA_CHANNEL, 0);
   }
 
   if (leftSpeed > 0) {
     digitalWrite(IN3, HIGH);
     digitalWrite(IN4, LOW);
-    ledcWrite(ENB, leftSpeed);
+    ledcWrite(ENB_CHANNEL, leftSpeed);
   } else if (leftSpeed < 0) {
     digitalWrite(IN3, LOW);
     digitalWrite(IN4, HIGH);
-    ledcWrite(ENB, -leftSpeed);
+    ledcWrite(ENB_CHANNEL, -leftSpeed);
   } else {
     digitalWrite(IN3, LOW);
     digitalWrite(IN4, LOW);
-    ledcWrite(ENB, 0);
+    ledcWrite(ENB_CHANNEL, 0);
   }
 }
