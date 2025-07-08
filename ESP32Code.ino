@@ -1,4 +1,5 @@
 #include <BluetoothSerial.h>
+#include <Arduino.h>
 #include <ESP32Servo.h>
 #include <IRremote.hpp>
 
@@ -38,6 +39,9 @@ IRrecv backReceiver(backReceiverPin);
 
 decode_results results;
 
+// Laser
+const int laserPin = 14;
+
 // Firing
 const unsigned long firingCooldown = 500; 
 unsigned long lastFired = 0;
@@ -71,10 +75,15 @@ void setup() {
   pinMode(IN3, OUTPUT);
   pinMode(IN4, OUTPUT);
 
+  pinMode(laserPin, OUTPUT);
+  digitalWrite(laserPin, HIGH);
+
   ledcSetup(ENA_CHANNEL, freq, resolution);
   ledcSetup(ENB_CHANNEL, freq, resolution);
   ledcAttachPin(ENA, ENA_CHANNEL);
   ledcAttachPin(ENB, ENB_CHANNEL);
+
+
 
   ESP32PWM::allocateTimer(3);
   TurretServo.attach(turretServoPin);
@@ -101,6 +110,12 @@ void loop() {
     else if (turretAngle > targetTurretAngle) turretAngle--;
 
     TurretServo.write(turretAngle);
+  }
+
+  if (millis() - lastFired) >= firingCooldown && health >= 0) {
+    digitalWrite(laserPin, HIGH);
+  } else {
+    digitalWrite(laserPin, LOW);
   }
 
   if (frontReceiver.decode(&results)) {
