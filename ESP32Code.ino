@@ -83,16 +83,14 @@ void setup() {
   ledcAttachPin(ENA, ENA_CHANNEL);
   ledcAttachPin(ENB, ENB_CHANNEL);
 
-
-
   ESP32PWM::allocateTimer(3);
   TurretServo.attach(turretServoPin);
 
   IrSender.begin(transmitterPin);
 
-  frontReceiver.begin();
-  topReceiver.begin();
-  backReceiver.begin();
+  frontReceiver.begin(frontReceiverPin, false, 0);
+  topReceiver.begin(topReceiverPin, false, 0);
+  backReceiver.begin(backReceiverPin, false, 0);
 
   Serial.begin(115200);
   SerialBT.begin(bluetoothName);
@@ -112,7 +110,7 @@ void loop() {
     TurretServo.write(turretAngle);
   }
 
-  if (millis() - lastFired) >= firingCooldown && health >= 0) {
+  if ((millis() - lastFired) >= firingCooldown && health >= 0) {
     digitalWrite(laserPin, HIGH);
   } else {
     digitalWrite(laserPin, LOW);
@@ -122,7 +120,7 @@ void loop() {
     uint32_t data = results.value;
     uint8_t receivedTeam = (data >> 8) & 0xFF;
 
-    if ((millis() - lastHit) >= hitCooldown && recievedTeam != team) {
+    if ((millis() - lastHit) >= hitCooldown && receivedTeam != team) {
       uint8_t damage = data & 0xFF;
       health -= damage * frontDamage;
       lastHit = millis();
