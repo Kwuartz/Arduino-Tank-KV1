@@ -29,7 +29,7 @@ An **Arduino-powered remote-controlled tank**, modeled after the Soviet **KV-1 h
 
 ## Controls (Bluetooth Commands)
 Format: Magnitude, Angle, Left, Right, Fire
-Where:
+Where:\n
 Magnitude is an integer
 Angle is an integer
 Left, Right and Fire are boolean values (0, 1)
