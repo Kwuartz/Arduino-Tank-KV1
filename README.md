@@ -28,13 +28,15 @@ An **Arduino-powered remote-controlled tank**, modeled after the Soviet **KV-1 h
 ![Wiring Diagram](Drawing.png)
 
 ## Controls (Bluetooth Commands)
-PLACEHOLDER
+Format: Magnitude, Angle, Left, Right, Fire
+Where:
+Magnitude is an integer
+Angle is an integer
+Left, Right and Fire are boolean values (0, 1)
 
 ## Installation & Setup
 1. **Assemble the tank** by wiring the motors, servos, and HC-05 module to the Arduino.
 2. **Upload the Arduino code** to your board.
 3. **Pair Bluetooth (HC-05)** with your mobile device.
 4. **Use a serial Bluetooth app** to send movement commands.
-
-## Images
 
